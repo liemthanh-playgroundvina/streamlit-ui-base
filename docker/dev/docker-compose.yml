@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  # App
+  app:
+    image: ${DOCKER_HUB_URL}/${NAME}:${ENV}
+    container_name: ${NAME}-${ENV}-app
+    command: ["streamlit", "run", "app/Home.py", "--server.port", "${BASE_PORT}", "--server.maxUploadSize", "5"]
+    ports:
+      - "8002:${BASE_PORT}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - net
+
+networks:
+  net:
+    name: ${NAME}-${ENV}-net
