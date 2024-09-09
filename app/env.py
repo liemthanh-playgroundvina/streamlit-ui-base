@@ -14,6 +14,9 @@ class Settings():
     CHAT_DOC_LC_URL = os.getenv("CHAT_DOC_LC_URL")
     CHAT_DOC_RAG_URL = os.getenv("CHAT_DOC_RAG_URL")
 
+    GPTS_FILE_PATH = os.getenv("GPTS_FILE_PATH")
+    LLMS_FILE_PATH = os.getenv("LLMS_FILE_PATH")
+
     # S3 Configurations
     AWS_REGION = os.getenv("AWS_REGION")
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")

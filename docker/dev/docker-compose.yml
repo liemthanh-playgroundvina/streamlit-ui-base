@@ -5,7 +5,7 @@ services:
   app:
     image: ${DOCKER_HUB_URL}/${NAME}:${ENV}
     container_name: ${NAME}-${ENV}-app
-    command: ["streamlit", "run", "app/Home.py", "--server.port", "${BASE_PORT}", "--server.maxUploadSize", "5"]
+    command: [ "scripts/entrypoint.sh" ]
     ports:
       - "8002:${BASE_PORT}"
     restart: unless-stopped

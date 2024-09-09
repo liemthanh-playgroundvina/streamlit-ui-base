@@ -6,6 +6,8 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app /app/app
+COPY ./app /app/app
+COPY ./static /app/static
+COPY ./scripts /app/scripts
 
-CMD ["streamlit", "run", "app/Home.py", "--server.port", "8501", "--server.maxUploadSize", "5"]
+CMD ["bash"]

@@ -12,9 +12,12 @@ import streamlit as st
 from backend.chat import ChatService, get_title
 from backend.common.s3 import upload_file, S3UploadFileObject
 
+from env import settings
+
 st.set_page_config(page_title="Chat", page_icon="📄")
 
-st.markdown("""# <center>Chatbot & Chat-Vision</center>""", unsafe_allow_html=True)
+st.markdown("""# <center>Chatbot""", unsafe_allow_html=True)
+st.markdown("""<center>chat & search & plot & GPTs & vision & document""", unsafe_allow_html=True)
 
 # Initialize chat history
 if "chat" not in st.session_state:
@@ -75,52 +78,44 @@ def reset_messages():
     st.session_state.chat = []
     pass
 
+def get_host():
+    with open(settings.LLMS_FILE_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f).keys()
+
 
 def get_model_name(pa_mode: str, pa_host: str):
     if pa_mode == "GPTs":
         pa_mode = "Chat"
     key_name = pa_host + " " + pa_mode
     dict_model = {
-        "OpenAI Chat": ("gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"),
-        "OpenAI Chat-Vision": ("gpt-4o", "gpt-4-turbo"),
-        "Fireworks Chat": ("dbrx-instruct", "mixtral-8x22b-instruct", "llama-v3-70b-instruct", "llama-v3-70b-instruct-hf"),
-        "Fireworks Chat-Vision": ("firellava-13b", "llava-yi-34b"),
+        "OpenAI Chat": ("gpt-4o", "gpt-4o-mini"),
+        "OpenAI Chat-Vision": ("gpt-4o", "gpt-4o-mini"),
+        "local Chat": ("qwen2-1.5b", "qwen2-7b"),
+        "local Chat-Vision": ("None", "None"),
     }
     return dict_model[key_name]
 
 
-def get_store_name(tag_name: str):
-    tags = {
-        "Writing": ["Write For Me", "Humanizer Pro", "CV Writer", "Automated Writer", "Quality Raters SEO Guide",
-                    "Cover Letter"],
-        "Productive": ["Canva", "Diagrams: Show Me", "AI PDF", "Excel GPT",
-                       "Presentation and Slides GPT: PowerPoints, PDFs", "Resume", "Video Maker", "Whimsical Diagrams"],
-        "Research & Analysis": ["Consensus", "SciSpace", "ScholarAI", "Wolfram", "MarketingAI"],
-        "Education": ["Math Mentor", "Universal Primer", "Tutor Me", "Physics", "Machine Learning", "Data Analytics",
-                      "Economics Econ"],
-        "Lifestyle": ["Astrology Birth Chart GPT", "Travel Guide", "Fitness, Workout & Diet - PhD Coach", "Rizz GPT",
-                      "Song Maker", "DeepGame", "Books", "AutoExpert", "Personal Color Analysis"]
-    }
-    return tags[tag_name]
-
-
 def get_max_tokens_value(model: str):
-    dict_token = {
-        # OpenAI (Output limit is 4096 token)
-        "gpt-4o": 4096,  # 128000,
-        "gpt-4-turbo": 4096,  # 128000,
-        "gpt-3.5-turbo": 4096, # 16385,
-        # Fireworks
-        # # Chat
-        "dbrx-instruct": 32768,
-        "mixtral-8x22b-instruct": 65536,
-        "llama-v3-70b-instruct": 8192,
-        "llama-v3-70b-instruct-hf": 8192,
-        # # ChatVision
-        "firellava-13b": 4096,
-        "llava-yi-34b": 4096,
-    }
-    return dict_token[model]
+    with open(settings.LLMS_FILE_PATH, 'r', encoding='utf-8') as f:
+        llms = json.load(f)
+
+    dict_token = {}
+    for models in llms.values():
+        dict_token.update(models)
+
+    return dict_token.get(model, None)
+
+def get_stores():
+    with open(settings.GPTS_FILE_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f).get("_list_store", {}).keys()
+
+def get_store_name(tag_name: str):
+    with open(settings.GPTS_FILE_PATH, 'r', encoding='utf-8') as f:
+        gpts_data = json.load(f)
+
+    tags = gpts_data.get("_list_store", {})
+    return tags[tag_name]
 
 
 def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = ""):
@@ -191,11 +186,11 @@ st.sidebar.header("Parameters")
 img_url = None
 with st.sidebar:
     # Mode
-    mode = st.selectbox("Mode", ("Chat", "GPTs", "Chat-Vision"), on_change=reset_messages)
+    mode = st.selectbox("Mode", ("Chat", "GPTs", "Chat-Vision", "Chat-Document"), on_change=reset_messages)
     if mode == "Chat":
         system_prompt = st.text_area(label="System Prompt", value="You are an assistant.")
     elif mode == "GPTs":
-        tag_name  = st.selectbox("Store Name", ("Writing", "Productive", "Research & Analysis", "Education", "Lifestyle"), on_change=reset_messages)
+        tag_name  = st.selectbox("Store Name", get_stores(), on_change=reset_messages)
         store_name = st.selectbox("Store Name", get_store_name(tag_name), on_change=reset_messages)
     elif mode == "Chat-Vision":
         system_prompt = st.text_area(label="System Prompt", value="You are an assistant.")
@@ -229,7 +224,7 @@ with st.sidebar:
                 raise ValueError("Undefined Image")
     # LLMs Param
     with st.expander("Configure"):
-        host = st.selectbox("Host Model", ("OpenAI", "Fireworks"), on_change=reset_messages)
+        host = st.selectbox("Host Model", get_host(), on_change=reset_messages)
         model_name = st.selectbox("Model", get_model_name(mode, host), on_change=reset_messages)
         temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.7, step=0.05)
         max_tokens = st.slider("Max_tokens", min_value=256, max_value=get_max_tokens_value(model_name), value=4096, step=32)
