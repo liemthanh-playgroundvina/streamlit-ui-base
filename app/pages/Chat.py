@@ -9,7 +9,7 @@ import pandas as pd
 from PIL import Image
 import streamlit as st
 
-from backend.chat import ChatBotService, ChatVisionService, get_title
+from backend.chat import ChatService, get_title
 from backend.common.s3 import upload_file, S3UploadFileObject
 
 st.set_page_config(page_title="Chat", page_icon="📄")
@@ -124,10 +124,7 @@ def get_max_tokens_value(model: str):
 
 
 def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = ""):
-    if mode  == "Chat-Vision":
-        client = ChatVisionService().get_client(messages, chat_model)
-    elif mode in ["Chat", "GPTs"]:
-        client = ChatBotService().get_client(messages, chat_model, store_name)
+    client = ChatService().get_client(mode, messages, chat_model, store_name)
 
     searching_placeholder = st.empty()
     message_placeholder = st.empty()
@@ -139,21 +136,26 @@ def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = ""):
 
     for event in client.events():
         # Searching
-        if '[SEARCHING]' in event.data:
+        if event.event == "SEARCHING":
             with searching_placeholder.expander("Searching..."):
                 ...
-        elif '[END_SEARCHING]' in event.data:
-            urls = event.data.replace("[END_SEARCHING]", "")
-            urls = json.loads(urls)
+        if event.event == "SEARCHED":
+            urls = json.loads(event.data)
             with searching_placeholder.expander(f"Searched {len(urls)} pages"):
                     for url in urls:
                         st.markdown(f"[{get_title(url)}]({url})")
             event.data = ""
             search = {"title": f"Searched {len(urls)} pages", "urls": [f"[{get_title(url)}]({url})" for url in urls]}
-        elif "[DONE]" in event.data:
-            break
+
+        # Response
+        if event.event == "CHATTING":
+            full_response += event.data.replace("<!<newline>!>", "\n")
 
         # Plot
+        if "<PLOT>" not in full_response:
+            response = full_response.replace("<PLOT", "Analysing...")
+            message_placeholder.markdown(rf"""{response}""")
+
         if "<PLOT>" in full_response and "</PLOT>" in full_response:
             plot_data_match = re.search(r'<PLOT>(.*?)</PLOT>', full_response, re.DOTALL)
             if plot_data_match:
@@ -180,11 +182,6 @@ def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = ""):
                 plot = plot_data
 
             full_response = re.sub(r'<PLOT>.*?</PLOT>', '', full_response, flags=re.DOTALL)
-
-        full_response += event.data.replace("[SEARCHING]", "").replace("[END_SEARCHING]", "").replace("[DATA_STREAMING]", "").replace("[DONE]", "").replace("[METADATA]", "").replace("<!<newline>!>", "\n")
-        if "<PLOT>" not in full_response:
-            response = full_response.replace("<PLOT", "Analysing...")
-            message_placeholder.markdown(rf"""{response}""")
 
     message_placeholder.markdown(rf"""{full_response}""")
     return full_response, search, plot
