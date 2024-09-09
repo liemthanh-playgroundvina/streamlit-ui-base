@@ -146,6 +146,9 @@ def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = ""):
         if event.event == "CHATTING":
             full_response += event.data.replace("<!<newline>!>", "\n")
 
+        if event.event == "DONE":
+            break
+
         # Plot
         if "<PLOT>" not in full_response:
             response = full_response.replace("<PLOT", "Analysing...")
