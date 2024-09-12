@@ -3,6 +3,7 @@ import re
 import uuid
 from copy import deepcopy
 from io import BytesIO
+
 import matplotlib.pyplot as plt
 
 import pandas as pd
@@ -24,10 +25,10 @@ if "chat" not in st.session_state:
     st.session_state.chat = []
 if "img_url" not in st.session_state:
     st.session_state.img_url = None
+if "docs_url" not in st.session_state:
+    st.session_state.docs_url = []
 if "uploader_key" not in st.session_state:
     st.session_state.uploader_key = str(uuid.uuid4())
-if "searching" not in st.session_state:
-    st.session_state.searching = False
 
 
 # Display chat messages from history on app rerun
@@ -90,8 +91,10 @@ def get_model_name(pa_mode: str, pa_host: str):
     dict_model = {
         "OpenAI Chat": ("gpt-4o", "gpt-4o-mini"),
         "OpenAI Chat-Vision": ("gpt-4o", "gpt-4o-mini"),
+        "OpenAI Chat-Document": ("gpt-4o", "gpt-4o-mini"),
         "local Chat": ("qwen2-1.5b", "qwen2-7b"),
         "local Chat-Vision": ("None", "None"),
+        "local Chat-Document": ("qwen2-1.5b", "qwen2-7b"),
     }
     return dict_model[key_name]
 
@@ -118,16 +121,19 @@ def get_store_name(tag_name: str):
     return tags[tag_name]
 
 
-def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = ""):
-    client = ChatService().get_client(mode, messages, chat_model, store_name)
+def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = "", data_id: str = ""):
+    client = ChatService().get_client(mode, messages, chat_model, store_name, data_id)
 
     searching_placeholder = st.empty()
+    metadata_placeholder = st.empty()
     message_placeholder = st.empty()
 
     full_response = ""
     search = None
     plot = None
     message_placeholder.markdown(rf"""{full_response}""" + "▌")
+
+    metadata_data = []
 
     for event in client.events():
         # Searching
@@ -142,11 +148,19 @@ def chat_bot(mode: str, messages: list, chat_model: dict, store_name: str = ""):
             event.data = ""
             search = {"title": f"Searched {len(urls)} pages", "urls": [f"[{get_title(url)}]({url})" for url in urls]}
 
+        # Metadata
+        if event.event == "METADATA":
+            metadata_data.extend(json.loads(event.data))
+
         # Response
         if event.event == "CHATTING":
             full_response += event.data.replace("<!<newline>!>", "\n")
 
         if event.event == "DONE":
+            print(metadata_data)
+            with metadata_placeholder.expander(f"Metadata"):
+                for meta in metadata_data:
+                    st.markdown(f"- [{meta['task']}, {meta['usage']}]")
             break
 
         # Plot
@@ -225,6 +239,36 @@ with st.sidebar:
                 st.image(st.session_state.img_url)
             except:
                 raise ValueError("Undefined Image")
+    # Chat Document
+    elif mode == "Chat-Document":
+        system_prompt = st.text_area(label="System Prompt", value="You are an chatbot assistant named AIHOHO created by LiemThanh.")
+        chat_id = st.text_input(label="Chat ID", value="")
+        type_chat = st.selectbox("Type", ("Long Context", "RAG"), on_change=reset_messages)
+        # URLs
+        document_urls = st.text_area(label="Document URLs", value="")
+        st.markdown("_:blue-background[Limit 5MB]_")
+        if document_urls:
+            document_urls = [url.strip() for url in document_urls.split("\n") if url.strip()]
+            st.session_state.docs_url.extend(document_urls)
+        # Uploads
+        uploaded_files = st.file_uploader(label="Upload multiple documents",
+                                          type=["pdf", "doc", "docx", "txt", "xls", "xlsx", "csv", "ppt", "pptx", "md",
+                                                "html", "xml"],
+                                          accept_multiple_files=True)
+        if uploaded_files is not None:
+            for file in uploaded_files:
+                s3_upload = S3UploadFileObject(filename=file.name, file=BytesIO(file.getvalue()), mimetype=file.type)
+                upload_info = upload_file(s3_upload, "ai-center/chat-document")
+                st.session_state.docs_url.append(upload_info["data"]["url"])
+
+        if st.button("Add Documents"):
+            if st.session_state.docs_url:
+                data_id = ChatService().embed_docs(type_chat, st.session_state.docs_url)
+                st.markdown(f"_:blue-background[Data_ID: {data_id}]_")
+            else:
+                raise ValueError("No Documents")
+            st.session_state.docs_url = []
+
     # LLMs Param
     with st.expander("Configure"):
         host = st.selectbox("Host Model", get_host(), on_change=reset_messages)
@@ -267,9 +311,12 @@ if prompt := st.chat_input("Text..."):
             "max_tokens": max_tokens,
         }
         if "store_name" in globals():
-            full_response, search_data, plot_data = chat_bot(mode, messages, config, store_name)
+            full_response, search_data, plot_data = chat_bot(mode, messages, config, store_name=store_name)
+        elif "type_chat" in globals():
+            full_response, search_data, plot_data = chat_bot(f"{mode} {type_chat}", messages, config, data_id=chat_id)
+
         else:
-            full_response, search_data, plot_data = chat_bot(mode, messages, config, "")
+            full_response, search_data, plot_data = chat_bot(mode, messages, config)
 
     # Add assistant response to chat history
     st.session_state.chat.append({"role": "assistant", "content": full_response, "search": search_data, "plot": plot_data})
