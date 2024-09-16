@@ -116,11 +116,12 @@ class ChatService():
             result = self.queue_result(task_id)
             status = result["data"]["status"]["task_status"]
 
-            if status == "SUCCESS":
-                return result["data"]["task_result"]["data"]["data_id"]
+            if status:
+                if status == "SUCCESS":
+                    return result["data"]["task_result"]["data"]["data_id"]
 
-            if status != "STARTED":
-                raise ValueError(result["data"]["status"]["task_status"])
+                if status != "STARTED":
+                    raise ValueError(result["data"]["status"]["task_status"])
             time.sleep(interval)
 
 
